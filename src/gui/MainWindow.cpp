@@ -4,6 +4,7 @@
 #include <QMessageBox>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QTimer>
 #include <QVBoxLayout>
 
@@ -14,6 +15,7 @@
 #include "gui/ChargePointControlWidget.h"
 #include "gui/ChargePointDetailWidget.h"
 #include "gui/ChargePointListWidget.h"
+#include "gui/TransactionsWidget.h"
 
 MainWindow::MainWindow(const AppConfig &config, CentralSystem *centralSystem, QWidget *parent)
     : QMainWindow(parent), m_config(config), m_cs(centralSystem)
@@ -34,7 +36,11 @@ MainWindow::MainWindow(const AppConfig &config, CentralSystem *centralSystem, QW
     m_detail->addTab(control, "Control");
     connect(m_list, &ChargePointListWidget::chargePointSelected, control, &ChargePointControlWidget::setChargePoint);
 
-    // Central area: error banner (hidden unless start-up failed) above list | detail.
+    auto *chargerTransactions = new TransactionsWidget(m_cs, false, this);
+    m_detail->addTab(chargerTransactions, "Transactions");
+    connect(m_list, &ChargePointListWidget::chargePointSelected, chargerTransactions, &TransactionsWidget::setChargePoint);
+
+    // Central area: error banner (hidden unless start-up failed) above the Chargers | Transactions tabs.
     auto *central = new QWidget(this);
     auto *layout = new QVBoxLayout(central);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -50,7 +56,11 @@ MainWindow::MainWindow(const AppConfig &config, CentralSystem *centralSystem, QW
     splitter->setStretchFactor(1, 2);
     splitter->setSizes({600, 700});
     layout->addWidget(m_banner);
-    layout->addWidget(splitter, 1);
+    auto *tabs = new QTabWidget(central);
+    tabs->setObjectName("mainTabs");
+    tabs->addTab(splitter, "Chargers");
+    tabs->addTab(new TransactionsWidget(m_cs, true, tabs), "Transactions");
+    layout->addWidget(tabs, 1);
     setCentralWidget(central);
 
     m_status = new QLabel(this);

@@ -111,6 +111,30 @@ private slots:
         QCOMPARE(r.json["messages"].toArray().size(), 3);
     }
 
+    void transactionHistoryEndpoints()
+    {
+        db.chargePointConnected("CP2", "127.0.0.1");
+        const QDateTime t = QDateTime::currentDateTimeUtc();
+        const qint64 a = db.startTransaction("CP1", 1, "A", 100, t.addSecs(-100));
+        db.stopTransaction(a, 600, t.addSecs(-50), "Local");
+        db.startTransaction("CP2", 1, "B", 0, t.addSecs(-10));
+        db.startTransaction("CP1", 2, "C", 5, t);
+
+        auto r = request("GET", "/api/transactions");
+        QCOMPARE(r.status, 200);
+        QCOMPARE(r.json["transactions"].toArray().size(), 3);
+        QCOMPARE(r.json["transactions"].toArray()[0].toObject()["idTag"].toString(), QString("C")); // newest first
+        QCOMPARE(request("GET", "/api/transactions?limit=2").json["transactions"].toArray().size(), 2);
+
+        r = request("GET", "/api/charge_points/CP1/transactions");
+        const QJsonArray mine = r.json["transactions"].toArray();
+        QCOMPARE(mine.size(), 2);
+        QCOMPARE(mine[1].toObject()["energyWh"].toInt(), 500);
+        QCOMPARE(mine[1].toObject()["chargePointId"].toString(), QString("CP1"));
+        QVERIFY(mine[0].toObject()["energyWh"].isNull());
+        QCOMPARE(request("GET", "/api/charge_points/NOPE/transactions").status, 404);
+    }
+
     void remoteStartReturnsChargerAnswer()
     {
         auto r = request("POST", "/api/charge_points/CP1/remote_start", R"({"idTag":"TAG","connectorId":1})");

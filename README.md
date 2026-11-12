@@ -43,6 +43,7 @@ The same settings can be put in `~/Library/Preferences/SleekOCPP/sleekocpp.ini` 
 - **Messages tab:** every OCPP frame of the selected charger, newest first, with the selected frame as formatted JSON.
 - **Configuration tab:** read all keys (GetConfiguration), double-click a value to change it (ChangeConfiguration), set keys that are not listed.
 - **Control tab:** start charging (idTag typed per start), stop charging, SetChargingProfile (single-period limit), clear profiles, Reset, TriggerMessage and raw messages.
+- **Transactions tab (per charger):** whole transaction history of the selected charger, sortable. The top-level **Transactions** tab next to *Chargers* shows all chargers. Energy is meterStop − meterStart in Wh as reported.
 
 ## REST API
 
@@ -52,6 +53,8 @@ JSON over HTTP, no authentication. `<id>` is the charge point id.
 | --- | --- |
 | `GET /api/charge_points` | All chargers with connectors |
 | `GET /api/charge_points/<id>` | One charger, including the last transaction |
+| `GET /api/transactions?limit=N` | Transaction history of all chargers, newest first (no limit = everything) |
+| `GET /api/charge_points/<id>/transactions?limit=N` | Transaction history of one charger (404 if unknown) |
 | `GET /api/charge_points/<id>/messages?limit=N` | Logged OCPP frames, newest first |
 | `GET /api/charge_points/<id>/meter_values?limit=N` | Recent meter values |
 | `GET /api/charge_points/<id>/configuration` | Cached configuration |
@@ -111,7 +114,7 @@ which is enough on the Mac that built it; giving it to others needs a Developer 
       MainWindow                    Splitter: list | detail, status bar
       ChargePointListWidget         Charger list
       ChargePointDetailWidget       Header and Messages tab, hosts the other tabs
-      ChargePointConfigurationWidget, ChargePointControlWidget
+      ChargePointConfigurationWidget, ChargePointControlWidget, TransactionsWidget
     tests/                          Qt Test, one executable per area (tst_e2e starts the real binary)
 
 How data flows: a frame arrives at `ChargePointSession`, `OcppServer` passes calls to `CentralSystem`,

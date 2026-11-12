@@ -47,6 +47,11 @@ struct TransactionRecord
     QString stopReason;
 
     bool isActive() const { return !stopTime.isValid(); }
+    /// Energy delivered in Wh (meterStop - meterStart); empty while running or if the stop value is missing.
+    std::optional<qint64> energyWh() const
+    {
+        return meterStop ? std::optional<qint64>(*meterStop - meterStart) : std::nullopt;
+    }
 };
 
 /// One logged WebSocket frame.
@@ -154,6 +159,9 @@ public:
     std::optional<TransactionRecord> lastTransaction(const QString &id) const;
     /// A transaction by the id we handed out in StartTransaction.
     std::optional<TransactionRecord> transaction(qint64 transactionId) const;
+    /// Transaction history, newest first. An empty @p chargePointId means all charge points.
+    /// @p limit 0 returns the whole history.
+    QList<TransactionRecord> transactions(const QString &chargePointId = QString(), int limit = 0) const;
     /// Newest first.
     QList<MessageRecord> recentMessages(const QString &id, int limit = 100) const;
     /// Newest first.

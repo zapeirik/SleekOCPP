@@ -30,9 +30,11 @@ QJsonObject toJson(const ConnectorStatusRecord &c)
 
 QJsonObject toJson(const TransactionRecord &t)
 {
-    return {{"id", static_cast<double>(t.id)}, {"connectorId", t.connectorId}, {"idTag", t.idTag},
+    return {{"id", static_cast<double>(t.id)}, {"chargePointId", t.chargePointId}, {"connectorId", t.connectorId},
+            {"idTag", t.idTag},
             {"active", t.isActive()}, {"meterStart", static_cast<double>(t.meterStart)},
             {"meterStop", t.meterStop ? QJsonValue(static_cast<double>(*t.meterStop)) : QJsonValue(QJsonValue::Null)},
+            {"energyWh", t.energyWh() ? QJsonValue(static_cast<double>(*t.energyWh())) : QJsonValue(QJsonValue::Null)},
             {"startTime", timeJson(t.startTime)}, {"stopTime", timeJson(t.stopTime)},
             {"stopReason", t.stopReason}};
 }
@@ -250,6 +252,24 @@ void RestApi::addReadRoutes()
         if (const auto tx = db->lastTransaction(id))
             o["lastTransaction"] = toJson(*tx);
         return jsonResponse(o);
+    });
+
+    // Transaction history; without ?limit= the whole history is returned.
+    m_http.route("/api/transactions", QHttpServerRequest::Method::Get, [db](const QHttpServerRequest &req) {
+        QJsonArray list;
+        for (const auto &t : db->transactions({}, limitParam(req, 0)))
+            list.append(toJson(t));
+        return jsonResponse({{"transactions", list}});
+    });
+
+    m_http.route("/api/charge_points/<arg>/transactions", QHttpServerRequest::Method::Get,
+                 [db](const QString &id, const QHttpServerRequest &req) {
+        if (!db->chargePoint(id))
+            return errorResponse("Unknown charge point", StatusCode::NotFound);
+        QJsonArray list;
+        for (const auto &t : db->transactions(id, limitParam(req, 0)))
+            list.append(toJson(t));
+        return jsonResponse({{"transactions", list}});
     });
 
     m_http.route("/api/charge_points/<arg>/messages", QHttpServerRequest::Method::Get,

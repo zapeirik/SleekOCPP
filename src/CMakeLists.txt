@@ -52,6 +52,8 @@ if(SLEEKOCPP_BUILD_GUI)
         gui/ChargePointConfigurationWidget.cpp
         gui/ChargePointControlWidget.h
         gui/ChargePointControlWidget.cpp
+        gui/TransactionsWidget.h
+        gui/TransactionsWidget.cpp
     )
     target_include_directories(sleekocpp_gui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(sleekocpp_gui PUBLIC sleekocpp_core Qt6::Widgets)

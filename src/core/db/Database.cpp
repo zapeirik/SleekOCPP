@@ -405,6 +405,27 @@ std::optional<TransactionRecord> Database::transaction(qint64 transactionId) con
     return transactionFromRow(q);
 }
 
+QList<TransactionRecord> Database::transactions(const QString &chargePointId, int limit) const
+{
+    QList<TransactionRecord> list;
+    QSqlQuery q(m_db);
+    QString sql = "SELECT * FROM transactions";
+    QVariantList args;
+    if (!chargePointId.isEmpty()) {
+        sql += " WHERE charge_point_id=?";
+        args << chargePointId;
+    }
+    sql += " ORDER BY id DESC";
+    if (limit > 0) {
+        sql += " LIMIT ?";
+        args << limit;
+    }
+    if (run(q, sql, args))
+        while (q.next())
+            list.append(transactionFromRow(q));
+    return list;
+}
+
 QList<MessageRecord> Database::recentMessages(const QString &id, int limit) const
 {
     QList<MessageRecord> list;

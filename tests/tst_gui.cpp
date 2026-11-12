@@ -21,6 +21,7 @@
 #include "gui/ChargePointDetailWidget.h"
 #include "gui/ChargePointListWidget.h"
 #include "gui/MainWindow.h"
+#include "gui/TransactionsWidget.h"
 
 /// Runs the main window offscreen with fake charge points and checks the list behaviour.
 /// Set SLEEKOCPP_SCREENSHOT=/path/file.png to save an image of the window.
@@ -45,6 +46,40 @@ class TstGui : public QObject
     }
 
 private slots:
+    void transactionTabsShowHistory()
+    {
+        Database db;
+        QVERIFY(db.open(":memory:"));
+        db.chargePointConnected("CP-A", "10.0.0.1");
+        db.chargePointConnected("CP-B", "10.0.0.2");
+        const QDateTime t = QDateTime::currentDateTimeUtc();
+        const qint64 a = db.startTransaction("CP-A", 1, "TAG1", 1000, t.addSecs(-3700));
+        db.stopTransaction(a, 8000, t.addSecs(-100), "EVDisconnected");
+        db.startTransaction("CP-B", 1, "TAG2", 0, t.addSecs(-5));
+        db.startTransaction("CP-A", 1, "TAG3", 8000, t.addSecs(-1));
+
+        OcppServer server;
+        QVERIFY(server.listen(0, QHostAddress::LocalHost));
+        CentralSystem cs(&server, &db);
+        AppConfig config;
+        MainWindow window(config, &cs);
+        window.show();
+
+        auto *all = window.findChild<QTabWidget *>("mainTabs")->widget(1)->findChild<QTableWidget *>("transactionsTable");
+        QVERIFY(all);
+        QCOMPARE(all->rowCount(), 3);
+        QCOMPARE(all->item(0, 3)->text(), QString("TAG3")); // newest first
+        QVERIFY(!all->isColumnHidden(1));
+
+        auto *perCharger = window.detail()->findChild<TransactionsWidget *>();
+        QVERIFY(perCharger);
+        perCharger->setChargePoint("CP-A");
+        auto *mine = perCharger->findChild<QTableWidget *>("transactionsTable");
+        QVERIFY(mine);
+        QCOMPARE(mine->rowCount(), 2);
+        QCOMPARE(mine->item(1, 7)->text(), QString("7000"));
+        QVERIFY(mine->isColumnHidden(1));
+    }
     void listShowsChargersAndEmitsSelection()
     {
         Database db;
