@@ -4,7 +4,9 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QMenu>
 #include <QTabWidget>
+#include <QToolButton>
 #include <QTableWidget>
 #include <QSignalSpy>
 #include <QStatusBar>
@@ -46,6 +48,47 @@ class TstGui : public QObject
     }
 
 private slots:
+    void messageFilterHidesActions()
+    {
+        Database db;
+        QVERIFY(db.open(":memory:"));
+        db.chargePointConnected("CP-F", "10.0.0.3");
+        db.logMessage("CP-F", true, "Call", "Heartbeat", "1", "[2,\"1\",\"Heartbeat\",{}]");
+        db.logMessage("CP-F", true, "Call", "StartTransaction", "2", "[2,\"2\",\"StartTransaction\",{}]");
+        db.logMessage("CP-F", false, "CallResult", "", "2", "[3,\"2\",{}]");
+        db.logMessage("CP-F", true, "Call", "StopTransaction", "3", "[2,\"3\",\"StopTransaction\",{}]");
+        db.logMessage("CP-F", true, "Call", "Heartbeat", "4", "[2,\"4\",\"Heartbeat\",{}]");
+
+        QCOMPARE(db.messageActions("CP-F"), QStringList({"Heartbeat", "StartTransaction", "StopTransaction"}));
+        QCOMPARE(db.recentMessages("CP-F", 100, {"Heartbeat"}).size(), 3);
+
+        OcppServer server;
+        QVERIFY(server.listen(0, QHostAddress::LocalHost));
+        CentralSystem cs(&server, &db);
+        AppConfig config;
+        MainWindow window(config, &cs);
+        window.show();
+        window.detail()->setChargePoint("CP-F");
+        auto *table = window.detail()->findChild<QTableWidget *>("messagesTable");
+        QCOMPARE(table->rowCount(), 5);
+
+        auto *button = window.detail()->findChild<QToolButton *>("messageFilterButton");
+        QVERIFY(button);
+        button->menu()->aboutToShow();
+        for (QAction *a : button->menu()->actions())
+            if (a->text() == "Heartbeat")
+                a->setChecked(false);
+        QCOMPARE(table->rowCount(), 3);
+        QVERIFY(button->text().contains("1 hidden"));
+
+        // Actions the charger never sent are still selectable.
+        button->menu()->aboutToShow();
+        bool found = false;
+        for (QAction *a : button->menu()->actions())
+            found |= a->text() == "SetChargingProfile";
+        QVERIFY(found);
+    }
+
     void transactionTabsShowHistory()
     {
         Database db;

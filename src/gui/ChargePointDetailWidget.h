@@ -9,6 +9,7 @@ class QLabel;
 class QPlainTextEdit;
 class QTableWidget;
 class QTabWidget;
+class QToolButton;
 
 /**
  * Detail view of one charge point, shown next to the list.
@@ -41,6 +42,8 @@ public:
 private:
     void scheduleRefresh(const QString &changedId);
     void showSelectedMessage();
+    void rebuildFilterMenu();
+    void updateFilterButton();
 
     CentralSystem *m_cs;
     QString m_id;
@@ -55,4 +58,6 @@ private:
     QTabWidget *m_tabs;
     QTableWidget *m_messages;
     QPlainTextEdit *m_messageText;
+    QToolButton *m_filterButton;  ///< menu of message actions to show/hide
+    QStringList m_hiddenActions;  ///< actions hidden in the Messages tab (kept when switching charger)
 };

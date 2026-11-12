@@ -5,6 +5,9 @@
 #include <QGuiApplication>
 #include <QFormLayout>
 #include <QHeaderView>
+#include <QHBoxLayout>
+#include <QMenu>
+#include <QToolButton>
 #include <QJsonDocument>
 #include <QLabel>
 #include <QPlainTextEdit>
@@ -19,6 +22,15 @@
 namespace {
 
 const int kMessageLimit = 200;
+
+/// All OCPP 1.6 actions, so the filter can be set up before a charger has sent them.
+const QStringList kKnownActions = {
+    "Authorize", "BootNotification", "CancelReservation", "ChangeAvailability", "ChangeConfiguration",
+    "ClearCache", "ClearChargingProfile", "DataTransfer", "DiagnosticsStatusNotification",
+    "FirmwareStatusNotification", "GetCompositeSchedule", "GetConfiguration", "GetDiagnostics",
+    "GetLocalListVersion", "Heartbeat", "MeterValues", "RemoteStartTransaction", "RemoteStopTransaction",
+    "ReserveNow", "Reset", "SendLocalList", "SetChargingProfile", "StartTransaction", "StatusNotification",
+    "StopTransaction", "TriggerMessage", "UnlockConnector", "UpdateFirmware"};
 
 /// Local time text, or "-" for a time that never happened.
 QString timeText(const QDateTime &t)
@@ -96,12 +108,26 @@ ChargePointDetailWidget::ChargePointDetailWidget(CentralSystem *centralSystem, Q
     m_messageText->setReadOnly(true);
     { QFont mono = QFontDatabase::systemFont(QFontDatabase::FixedFont); mono.setPointSizeF(QGuiApplication::font().pointSizeF()); m_messageText->setFont(mono); }
     auto *split = new QSplitter(Qt::Vertical, this);
+    auto *messagesPage = new QWidget(this);
+    auto *messagesLayout = new QVBoxLayout(messagesPage);
+    messagesLayout->setContentsMargins(0, 0, 0, 0);
+    auto *filterRow = new QHBoxLayout;
+    m_filterButton = new QToolButton(messagesPage);
+    m_filterButton->setObjectName("messageFilterButton");
+    m_filterButton->setPopupMode(QToolButton::InstantPopup);
+    m_filterButton->setMenu(new QMenu(m_filterButton));
+    connect(m_filterButton->menu(), &QMenu::aboutToShow, this, &ChargePointDetailWidget::rebuildFilterMenu);
+    filterRow->addWidget(m_filterButton);
+    filterRow->addStretch(1);
+    messagesLayout->addLayout(filterRow);
+    messagesLayout->addWidget(split, 1);
+    updateFilterButton();
     split->addWidget(m_messages);
     split->addWidget(m_messageText);
     split->setSizes({300, 150});
 
     m_tabs = new QTabWidget(m_content);
-    m_tabs->addTab(split, "Messages");
+    m_tabs->addTab(messagesPage, "Messages");
     layout->addWidget(m_tabs, 1);
 
     connect(m_messages, &QTableWidget::itemSelectionChanged, this, &ChargePointDetailWidget::showSelectedMessage);
@@ -187,7 +213,7 @@ void ChargePointDetailWidget::refresh()
     // Rebuild the message table, keeping the selection.
     const qint64 selectedMessage = m_messages->currentRow() >= 0
         ? m_messages->item(m_messages->currentRow(), 0)->data(Qt::UserRole).toLongLong() : -1;
-    const auto messages = db->recentMessages(m_id, kMessageLimit);
+    const auto messages = db->recentMessages(m_id, kMessageLimit, m_hiddenActions);
     QSignalBlocker block(m_messages);
     m_messages->setRowCount(messages.size());
     int selectRow = -1;
@@ -213,4 +239,53 @@ void ChargePointDetailWidget::showSelectedMessage()
 {
     const int row = m_messages->currentRow();
     m_messageText->setPlainText(row >= 0 ? prettyJson(m_messages->item(row, 0)->data(Qt::UserRole + 1).toString()) : QString());
+}
+
+/// Label of the filter button: tells how many message actions are hidden.
+void ChargePointDetailWidget::updateFilterButton()
+{
+    // Trailing spaces keep the menu arrow away from the text.
+    m_filterButton->setText((m_hiddenActions.isEmpty() ? QStringLiteral("Filter: all messages")
+                                                       : QString("Filter: %1 hidden").arg(m_hiddenActions.size()))
+                            + QStringLiteral("   "));
+}
+
+/// Fills the filter menu: one checkable entry per OCPP 1.6 action and any other action seen (checked = shown),
+/// plus "Show all" / "Hide all". Requests and responses of an action are filtered together, so
+/// showing only StartTransaction and StopTransaction shows both directions of those.
+void ChargePointDetailWidget::rebuildFilterMenu()
+{
+    QMenu *menu = m_filterButton->menu();
+    menu->clear();
+    QStringList actions = kKnownActions;
+    const QStringList extra = m_cs->database()->messageActions(m_id) + m_hiddenActions;
+    for (const QString &a : extra)
+        if (!actions.contains(a))
+            actions << a;
+    actions.sort();
+
+    connect(menu->addAction("Show all"), &QAction::triggered, this, [this] {
+        m_hiddenActions.clear();
+        updateFilterButton();
+        refresh();
+    });
+    connect(menu->addAction("Hide all"), &QAction::triggered, this, [this, actions] {
+        m_hiddenActions = actions;
+        updateFilterButton();
+        refresh();
+    });
+    menu->addSeparator();
+    for (const QString &action : std::as_const(actions)) {
+        QAction *a = menu->addAction(action);
+        a->setCheckable(true);
+        a->setChecked(!m_hiddenActions.contains(action));
+        connect(a, &QAction::toggled, this, [this, action](bool shown) {
+            if (shown)
+                m_hiddenActions.removeAll(action);
+            else if (!m_hiddenActions.contains(action))
+                m_hiddenActions << action;
+            updateFilterButton();
+            refresh();
+        });
+    }
 }

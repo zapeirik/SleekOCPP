@@ -40,7 +40,7 @@ The same settings can be put in `~/Library/Preferences/SleekOCPP/sleekocpp.ini` 
 ## The GUI
 
 - **List:** all chargers ever seen, with connection state and per connector status (colored).
-- **Messages tab:** every OCPP frame of the selected charger, newest first, with the selected frame as formatted JSON.
+- **Messages tab:** every OCPP frame of the selected charger, newest first, with the selected frame as formatted JSON. The **Filter** menu hides or shows messages per action (requests and their responses together), e.g. show only StartTransaction and StopTransaction.
 - **Configuration tab:** read all keys (GetConfiguration), double-click a value to change it (ChangeConfiguration), set keys that are not listed.
 - **Control tab:** start charging (idTag typed per start), stop charging, SetChargingProfile (single-period limit), clear profiles, Reset, TriggerMessage and raw messages.
 - **Transactions tab (per charger):** whole transaction history of the selected charger, sortable. The top-level **Transactions** tab next to *Chargers* shows all chargers. Energy is meterStop − meterStart in Wh as reported.

@@ -426,11 +426,30 @@ QList<TransactionRecord> Database::transactions(const QString &chargePointId, in
     return list;
 }
 
-QList<MessageRecord> Database::recentMessages(const QString &id, int limit) const
+QStringList Database::messageActions(const QString &id) const
+{
+    QStringList actions;
+    QSqlQuery q(m_db);
+    if (run(q, "SELECT DISTINCT action FROM messages WHERE charge_point_id=? AND action<>'' ORDER BY action", {id}))
+        while (q.next())
+            actions << q.value(0).toString();
+    return actions;
+}
+
+QList<MessageRecord> Database::recentMessages(const QString &id, int limit, const QStringList &hiddenActions) const
 {
     QList<MessageRecord> list;
     QSqlQuery q(m_db);
-    if (run(q, "SELECT * FROM messages WHERE charge_point_id=? ORDER BY id DESC LIMIT ?", {id, limit})) {
+    QString sql = "SELECT * FROM messages WHERE charge_point_id=?";
+    QVariantList args{id};
+    if (!hiddenActions.isEmpty()) {
+        sql += " AND COALESCE(action,'') NOT IN (" + QStringList(hiddenActions.size(), "?").join(",") + ")";
+        for (const QString &a : hiddenActions)
+            args << a;
+    }
+    sql += " ORDER BY id DESC LIMIT ?";
+    args << limit;
+    if (run(q, sql, args)) {
         while (q.next()) {
             MessageRecord r;
             r.id = q.value("id").toLongLong();

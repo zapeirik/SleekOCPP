@@ -162,8 +162,12 @@ public:
     /// Transaction history, newest first. An empty @p chargePointId means all charge points.
     /// @p limit 0 returns the whole history.
     QList<TransactionRecord> transactions(const QString &chargePointId = QString(), int limit = 0) const;
-    /// Newest first.
-    QList<MessageRecord> recentMessages(const QString &id, int limit = 100) const;
+    /// Newest first. Messages whose action is in @p hiddenActions are skipped (before the limit is
+    /// applied, so rare messages are still found among many heartbeats).
+    QList<MessageRecord> recentMessages(const QString &id, int limit = 100,
+                                        const QStringList &hiddenActions = {}) const;
+    /// The distinct actions (e.g. "Heartbeat") that appear in a charge point's message log, sorted.
+    QStringList messageActions(const QString &id) const;
     /// Newest first.
     QList<MeterValueRecord> recentMeterValues(const QString &id, int limit = 50) const;
 
