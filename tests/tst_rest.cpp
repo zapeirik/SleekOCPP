@@ -135,6 +135,28 @@ private slots:
         QCOMPARE(request("GET", "/api/charge_points/NOPE/transactions").status, 404);
     }
 
+    void messagePruningInTwoSteps()
+    {
+        db.logMessage("CP1", true, "Call", "Heartbeat", "1", "[]");
+        db.logMessage("CP1", false, "CallResult", "", "1", "[]"); // gets action Heartbeat
+        db.logMessage("CP1", true, "Call", "StartTransaction", "2", "[]");
+        db.logMessage("CP2", true, "Call", "Heartbeat", "3", "[]");
+
+        QCOMPARE(request("POST", "/api/messages/delete", "not json").status, 400);
+        auto r = request("POST", "/api/messages/delete", R"({"chargePointId":"CP1","actions":["Heartbeat"],"types":["Call"]})");
+        QCOMPARE(r.json["deleted"].toInt(), 1);
+        QCOMPARE(db.recentMessages("CP1", 100).size(), 2); // hidden, not removed
+        QCOMPARE(db.countDeletedMessages(), 1);
+
+        QCOMPARE(request("POST", "/api/messages/delete", R"({"before":"2000-01-01T00:00:00Z"})").json["deleted"].toInt(), 0);
+        QCOMPARE(request("POST", "/api/messages/delete", R"({"before":"2999-01-01T00:00:00Z","actions":["Heartbeat"]})").json["deleted"].toInt(), 2);
+
+        QCOMPARE(request("POST", "/api/messages/purge", R"({"chargePointId":"CP2"})").json["removed"].toInt(), 1);
+        QCOMPARE(db.countDeletedMessages(), 2); // CP1's still waiting
+        QCOMPARE(request("POST", "/api/messages/purge").json["removed"].toInt(), 2);
+        QCOMPARE(db.countDeletedMessages(), 0);
+    }
+
     void remoteStartReturnsChargerAnswer()
     {
         auto r = request("POST", "/api/charge_points/CP1/remote_start", R"({"idTag":"TAG","connectorId":1})");

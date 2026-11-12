@@ -41,6 +41,7 @@ The same settings can be put in `~/Library/Preferences/SleekOCPP/sleekocpp.ini` 
 
 - **List:** all chargers ever seen, with connection state and per connector status (colored).
 - **Messages tab:** every OCPP frame of the selected charger, newest first, with the selected frame as formatted JSON. The **Filter** menu hides or shows messages per action (requests and their responses together), e.g. show only StartTransaction and StopTransaction.
+  The **Prune** menu cleans up the log in two steps: *Delete messages...* hides messages matching charger, message types, call types (Call/CallResult/CallError) and/or "older than" a date (with confirmation); *Remove deleted from database...* then erases the hidden ones for good, for this charger or all (with confirmation).
 - **Configuration tab:** read all keys (GetConfiguration), double-click a value to change it (ChangeConfiguration), set keys that are not listed.
 - **Control tab:** start charging (idTag typed per start), stop charging, SetChargingProfile (single-period limit), clear profiles, Reset, TriggerMessage and raw messages.
 - **Transactions tab (per charger):** whole transaction history of the selected charger, sortable. The top-level **Transactions** tab next to *Chargers* shows all chargers. Energy is meterStop − meterStart in Wh as reported.
@@ -55,7 +56,9 @@ JSON over HTTP, no authentication. `<id>` is the charge point id.
 | `GET /api/charge_points/<id>` | One charger, including the last transaction |
 | `GET /api/transactions?limit=N` | Transaction history of all chargers, newest first (no limit = everything) |
 | `GET /api/charge_points/<id>/transactions?limit=N` | Transaction history of one charger (404 if unknown) |
-| `GET /api/charge_points/<id>/messages?limit=N` | Logged OCPP frames, newest first |
+| `GET /api/charge_points/<id>/messages?limit=N` | Logged OCPP frames, newest first (soft-deleted ones excluded) |
+| `POST /api/messages/delete` | Step 1, no confirmation: body `{chargePointId?, actions?[], types?[], before?}` (ISO 8601); marks matching messages deleted, returns `{"deleted": n}` |
+| `POST /api/messages/purge` | Step 2, no confirmation: body `{chargePointId?}`; removes deleted messages from the database, returns `{"removed": n}` |
 | `GET /api/charge_points/<id>/meter_values?limit=N` | Recent meter values |
 | `GET /api/charge_points/<id>/configuration` | Cached configuration |
 | `POST /api/charge_points/<id>/<command>` | Send a command (JSON body) |
@@ -141,5 +144,5 @@ Then expose it: a case in `RestApi` with `addCommand("name", ...)`, and a button
 ## Not included
 
 OCPP 2.0.1, TLS (`wss://`) and charger authentication, REST authentication, `/files` and `status.json` from the
-Python reference, pruning of old messages. The database grows without limit; delete the file to start fresh.
+Python reference. Nothing is pruned automatically: the database grows until you prune messages (Messages tab or REST).
 The GUI has only been tried on macOS (and offscreen in tests).

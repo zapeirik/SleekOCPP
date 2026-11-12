@@ -44,6 +44,9 @@ private:
     void showSelectedMessage();
     void rebuildFilterMenu();
     void updateFilterButton();
+    QStringList allActions() const;
+    void promptDeleteMessages();
+    void promptPurgeMessages();
 
     CentralSystem *m_cs;
     QString m_id;

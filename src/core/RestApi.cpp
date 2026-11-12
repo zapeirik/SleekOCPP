@@ -280,6 +280,37 @@ void RestApi::addReadRoutes()
         return jsonResponse({{"messages", list}});
     });
 
+    // Message pruning in two steps: mark as deleted, then remove from the database. No confirmation here.
+    m_http.route("/api/messages/delete", QHttpServerRequest::Method::Post, [db](const QHttpServerRequest &req) {
+        QJsonParseError err;
+        const QJsonDocument doc = req.body().trimmed().isEmpty() ? QJsonDocument(QJsonObject())
+                                                                 : QJsonDocument::fromJson(req.body(), &err);
+        if (err.error != QJsonParseError::NoError || !doc.isObject())
+            return errorResponse("Body must be a JSON object", StatusCode::BadRequest);
+        const QJsonObject b = doc.object();
+        MessageFilter f;
+        f.chargePointId = b["chargePointId"].toString();
+        for (const QJsonValue &v : b["actions"].toArray())
+            f.actions << v.toString();
+        for (const QJsonValue &v : b["types"].toArray())
+            f.types << v.toString();
+        if (b.contains("before")) {
+            f.before = Database::fromDb(b["before"].toString());
+            if (!f.before.isValid())
+                return errorResponse("'before' must be an ISO 8601 time", StatusCode::BadRequest);
+        }
+        return jsonResponse({{"deleted", db->softDeleteMessages(f)}});
+    });
+
+    m_http.route("/api/messages/purge", QHttpServerRequest::Method::Post, [db](const QHttpServerRequest &req) {
+        QJsonParseError err;
+        const QJsonDocument doc = req.body().trimmed().isEmpty() ? QJsonDocument(QJsonObject())
+                                                                 : QJsonDocument::fromJson(req.body(), &err);
+        if (err.error != QJsonParseError::NoError || !doc.isObject())
+            return errorResponse("Body must be a JSON object", StatusCode::BadRequest);
+        return jsonResponse({{"removed", db->purgeDeletedMessages(doc.object()["chargePointId"].toString())}});
+    });
+
     m_http.route("/api/charge_points/<arg>/meter_values", QHttpServerRequest::Method::Get,
                  [db](const QString &id, const QHttpServerRequest &req) {
         QJsonArray list;

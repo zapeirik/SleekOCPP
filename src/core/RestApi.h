@@ -20,6 +20,11 @@ class QTcpServer;
  *   /api/charge_points/<id>/meter_values?limit=N
  *   /api/charge_points/<id>/configuration      cached configuration
  *
+ * Message pruning (POST, no confirmation):
+ *   /api/messages/delete {chargePointId?, actions?[], types?[], before?}  mark matching messages deleted
+ *   /api/messages/purge  {chargePointId?}                                  remove deleted messages from the db
+ *   Empty/missing fields match everything. Both answer with the number of messages affected.
+ *
  * Command endpoints (POST with a JSON body) at /api/charge_points/<id>/<command>:
  *   remote_start {idTag, connectorId?, chargingProfile?}   remote_stop {transactionId?}
  *   get_configuration {keys?}                              change_configuration {key, value}

@@ -4,6 +4,8 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QComboBox>
+#include <QListWidget>
 #include <QMenu>
 #include <QTabWidget>
 #include <QToolButton>
@@ -23,6 +25,7 @@
 #include "gui/ChargePointDetailWidget.h"
 #include "gui/ChargePointListWidget.h"
 #include "gui/MainWindow.h"
+#include "gui/MessagePruneDialog.h"
 #include "gui/TransactionsWidget.h"
 
 /// Runs the main window offscreen with fake charge points and checks the list behaviour.
@@ -48,6 +51,23 @@ class TstGui : public QObject
     }
 
 private slots:
+    void pruneDialogBuildsFilterAndCounts()
+    {
+        Database db;
+        QVERIFY(db.open(":memory:"));
+        db.logMessage("A", true, "Call", "Heartbeat", "1", "[]");
+        db.logMessage("A", true, "Call", "StartTransaction", "2", "[]");
+        db.logMessage("B", true, "Call", "Heartbeat", "3", "[]");
+        MessagePruneDialog dialog(&db, "A", {"Heartbeat", "StartTransaction"});
+        QCOMPARE(dialog.findChild<QLabel *>("pruneCount")->text(), QString("2 message(s) match."));
+        dialog.findChild<QComboBox *>("pruneScope")->setCurrentIndex(1);
+        QCOMPARE(dialog.findChild<QLabel *>("pruneCount")->text(), QString("3 message(s) match."));
+        dialog.findChild<QListWidget *>("pruneActions")->item(0)->setCheckState(Qt::Checked);
+        QCOMPARE(dialog.findChild<QLabel *>("pruneCount")->text(), QString("2 message(s) match."));
+        QCOMPARE(dialog.filter().actions, QStringList({"Heartbeat"}));
+        QVERIFY(dialog.filter().chargePointId.isEmpty());
+    }
+
     void messageFilterHidesActions()
     {
         Database db;

@@ -52,6 +52,8 @@ if(SLEEKOCPP_BUILD_GUI)
         gui/ChargePointConfigurationWidget.cpp
         gui/ChargePointControlWidget.h
         gui/ChargePointControlWidget.cpp
+        gui/MessagePruneDialog.h
+        gui/MessagePruneDialog.cpp
         gui/TransactionsWidget.h
         gui/TransactionsWidget.cpp
     )

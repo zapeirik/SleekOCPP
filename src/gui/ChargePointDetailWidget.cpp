@@ -7,10 +7,12 @@
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QMenu>
+#include <QMessageBox>
 #include <QToolButton>
 #include <QJsonDocument>
 #include <QLabel>
 #include <QPlainTextEdit>
+#include <QPushButton>
 #include <QSplitter>
 #include <QTabWidget>
 #include <QTableWidget>
@@ -18,6 +20,7 @@
 
 #include "core/CentralSystem.h"
 #include "core/db/Database.h"
+#include "gui/MessagePruneDialog.h"
 
 namespace {
 
@@ -118,6 +121,15 @@ ChargePointDetailWidget::ChargePointDetailWidget(CentralSystem *centralSystem, Q
     m_filterButton->setMenu(new QMenu(m_filterButton));
     connect(m_filterButton->menu(), &QMenu::aboutToShow, this, &ChargePointDetailWidget::rebuildFilterMenu);
     filterRow->addWidget(m_filterButton);
+    auto *pruneButton = new QToolButton(messagesPage);
+    pruneButton->setObjectName("messagePruneButton");
+    pruneButton->setText("Prune   ");
+    pruneButton->setPopupMode(QToolButton::InstantPopup);
+    auto *pruneMenu = new QMenu(pruneButton);
+    connect(pruneMenu->addAction("Delete messages..."), &QAction::triggered, this, &ChargePointDetailWidget::promptDeleteMessages);
+    connect(pruneMenu->addAction("Remove deleted from database..."), &QAction::triggered, this, &ChargePointDetailWidget::promptPurgeMessages);
+    pruneButton->setMenu(pruneMenu);
+    filterRow->addWidget(pruneButton);
     filterRow->addStretch(1);
     messagesLayout->addLayout(filterRow);
     messagesLayout->addWidget(split, 1);
@@ -250,6 +262,57 @@ void ChargePointDetailWidget::updateFilterButton()
                             + QStringLiteral("   "));
 }
 
+/// Known OCPP 1.6 actions plus any other action seen for this charger, sorted.
+QStringList ChargePointDetailWidget::allActions() const
+{
+    QStringList actions = kKnownActions;
+    const QStringList extra = m_cs->database()->messageActions(m_id) + m_hiddenActions;
+    for (const QString &a : extra)
+        if (!actions.contains(a))
+            actions << a;
+    actions.sort();
+    return actions;
+}
+
+/// Pruning step 1: asks what to delete, confirms, then marks the messages deleted (hidden).
+void ChargePointDetailWidget::promptDeleteMessages()
+{
+    MessagePruneDialog dialog(m_cs->database(), m_id, allActions(), this);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    const MessageFilter filter = dialog.filter();
+    const int n = m_cs->database()->countMessages(filter);
+    const QString scope = filter.chargePointId.isEmpty() ? QStringLiteral("all chargers") : filter.chargePointId;
+    if (QMessageBox::question(this, "Delete messages",
+                              QString("Delete %1 message(s) of %2?\n\nThey disappear from the views now. "
+                                      "Use Prune > Remove deleted from database to erase them for good.")
+                                  .arg(n).arg(scope)) != QMessageBox::Yes)
+        return;
+    m_cs->database()->softDeleteMessages(filter);
+    refresh();
+}
+
+/// Pruning step 2: asks whether to erase the soft-deleted messages of this charger or of all.
+void ChargePointDetailWidget::promptPurgeMessages()
+{
+    Database *db = m_cs->database();
+    const int mine = db->countDeletedMessages(m_id), all = db->countDeletedMessages();
+    QMessageBox box(QMessageBox::Warning, "Remove deleted messages",
+                    QString("Remove deleted messages from the database permanently?\n\n"
+                            "%1: %2 message(s)\nAll chargers: %3 message(s)\n\nThis cannot be undone.")
+                        .arg(m_id).arg(mine).arg(all),
+                    QMessageBox::Cancel, this);
+    auto *thisCharger = box.addButton("This charger", QMessageBox::DestructiveRole);
+    auto *allChargers = box.addButton("All chargers", QMessageBox::DestructiveRole);
+    thisCharger->setEnabled(mine > 0);
+    allChargers->setEnabled(all > 0);
+    box.exec();
+    if (box.clickedButton() == thisCharger)
+        db->purgeDeletedMessages(m_id);
+    else if (box.clickedButton() == allChargers)
+        db->purgeDeletedMessages();
+}
+
 /// Fills the filter menu: one checkable entry per OCPP 1.6 action and any other action seen (checked = shown),
 /// plus "Show all" / "Hide all". Requests and responses of an action are filtered together, so
 /// showing only StartTransaction and StopTransaction shows both directions of those.
@@ -257,12 +320,7 @@ void ChargePointDetailWidget::rebuildFilterMenu()
 {
     QMenu *menu = m_filterButton->menu();
     menu->clear();
-    QStringList actions = kKnownActions;
-    const QStringList extra = m_cs->database()->messageActions(m_id) + m_hiddenActions;
-    for (const QString &a : extra)
-        if (!actions.contains(a))
-            actions << a;
-    actions.sort();
+    const QStringList actions = allActions();
 
     connect(menu->addAction("Show all"), &QAction::triggered, this, [this] {
         m_hiddenActions.clear();

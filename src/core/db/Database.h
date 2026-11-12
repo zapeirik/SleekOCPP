@@ -67,6 +67,16 @@ struct MessageRecord
     QString raw;                   ///< Complete JSON text as sent
 };
 
+/// Selects messages for pruning. Every empty field means "no restriction", so a default filter
+/// matches every message.
+struct MessageFilter
+{
+    QString chargePointId;   ///< empty = all charge points
+    QStringList actions;     ///< e.g. "Heartbeat"; results/errors carry the action of their call
+    QStringList types;       ///< "Call", "CallResult" and/or "CallError"
+    QDateTime before;        ///< only messages older than this
+};
+
 /// One sampled value from a MeterValues message.
 struct MeterValueRecord
 {
@@ -166,6 +176,16 @@ public:
     /// applied, so rare messages are still found among many heartbeats).
     QList<MessageRecord> recentMessages(const QString &id, int limit = 100,
                                         const QStringList &hiddenActions = {}) const;
+    /// Pruning, step 1: marks matching messages as deleted (hidden everywhere, still in the file).
+    /// Returns how many were marked.
+    int softDeleteMessages(const MessageFilter &filter);
+    /// How many not-yet-deleted messages match @p filter (what softDeleteMessages would mark).
+    int countMessages(const MessageFilter &filter) const;
+    /// Pruning, step 2: removes soft-deleted messages from the database for good, of one charge
+    /// point or (empty id) all. Returns how many were removed.
+    int purgeDeletedMessages(const QString &chargePointId = QString());
+    /// How many soft-deleted messages wait to be purged (one charge point, or empty id = all).
+    int countDeletedMessages(const QString &chargePointId = QString()) const;
     /// The distinct actions (e.g. "Heartbeat") that appear in a charge point's message log, sorted.
     QStringList messageActions(const QString &id) const;
     /// Newest first.

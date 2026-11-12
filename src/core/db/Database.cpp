@@ -8,7 +8,7 @@
 
 namespace {
 
-constexpr int kSchemaVersion = 1;
+constexpr int kSchemaVersion = 2;
 
 QString now() { return Database::toDb(QDateTime::currentDateTimeUtc()); }
 
@@ -128,6 +128,17 @@ bool Database::migrate()
         run(QString("PRAGMA user_version=%1").arg(kSchemaVersion));
         m_db.commit();
         version = 1;
+    }
+    if (version < 2) {
+        // Two-step pruning: messages are first marked deleted, later removed for good.
+        m_db.transaction();
+        if (!run("ALTER TABLE messages ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")) {
+            m_db.rollback();
+            return false;
+        }
+        run(QString("PRAGMA user_version=%1").arg(kSchemaVersion));
+        m_db.commit();
+        version = 2;
     }
     return true;
 }
@@ -426,11 +437,78 @@ QList<TransactionRecord> Database::transactions(const QString &chargePointId, in
     return list;
 }
 
+namespace {
+
+/// WHERE clause (without the "WHERE") and arguments for the not-yet-deleted messages matching @p f.
+QString pruneWhere(const MessageFilter &f, QVariantList &args)
+{
+    QStringList cond = {"deleted=0"};
+    if (!f.chargePointId.isEmpty()) {
+        cond << "charge_point_id=?";
+        args << f.chargePointId;
+    }
+    if (!f.actions.isEmpty()) {
+        cond << "action IN (" + QStringList(f.actions.size(), "?").join(",") + ")";
+        for (const QString &a : f.actions)
+            args << a;
+    }
+    if (!f.types.isEmpty()) {
+        cond << "type IN (" + QStringList(f.types.size(), "?").join(",") + ")";
+        for (const QString &t : f.types)
+            args << t;
+    }
+    if (f.before.isValid()) {
+        cond << "timestamp < ?";
+        args << Database::toDb(f.before);
+    }
+    return cond.join(" AND ");
+}
+
+} // namespace
+
+int Database::countMessages(const MessageFilter &filter) const
+{
+    QVariantList args;
+    QSqlQuery q(m_db);
+    if (run(q, "SELECT COUNT(*) FROM messages WHERE " + pruneWhere(filter, args), args) && q.next())
+        return q.value(0).toInt();
+    return 0;
+}
+
+int Database::softDeleteMessages(const MessageFilter &filter)
+{
+    QVariantList args;
+    QSqlQuery q(m_db);
+    if (!run(q, "UPDATE messages SET deleted=1 WHERE " + pruneWhere(filter, args), args))
+        return 0;
+    return q.numRowsAffected();
+}
+
+int Database::countDeletedMessages(const QString &chargePointId) const
+{
+    QSqlQuery q(m_db);
+    const bool all = chargePointId.isEmpty();
+    if (run(q, QString("SELECT COUNT(*) FROM messages WHERE deleted=1") + (all ? "" : " AND charge_point_id=?"),
+            all ? QVariantList() : QVariantList{chargePointId}) && q.next())
+        return q.value(0).toInt();
+    return 0;
+}
+
+int Database::purgeDeletedMessages(const QString &chargePointId)
+{
+    QSqlQuery q(m_db);
+    const bool all = chargePointId.isEmpty();
+    if (!run(q, QString("DELETE FROM messages WHERE deleted=1") + (all ? "" : " AND charge_point_id=?"),
+             all ? QVariantList() : QVariantList{chargePointId}))
+        return 0;
+    return q.numRowsAffected();
+}
+
 QStringList Database::messageActions(const QString &id) const
 {
     QStringList actions;
     QSqlQuery q(m_db);
-    if (run(q, "SELECT DISTINCT action FROM messages WHERE charge_point_id=? AND action<>'' ORDER BY action", {id}))
+    if (run(q, "SELECT DISTINCT action FROM messages WHERE charge_point_id=? AND deleted=0 AND action<>'' ORDER BY action", {id}))
         while (q.next())
             actions << q.value(0).toString();
     return actions;
@@ -440,7 +518,7 @@ QList<MessageRecord> Database::recentMessages(const QString &id, int limit, cons
 {
     QList<MessageRecord> list;
     QSqlQuery q(m_db);
-    QString sql = "SELECT * FROM messages WHERE charge_point_id=?";
+    QString sql = "SELECT * FROM messages WHERE charge_point_id=? AND deleted=0";
     QVariantList args{id};
     if (!hiddenActions.isEmpty()) {
         sql += " AND COALESCE(action,'') NOT IN (" + QStringList(hiddenActions.size(), "?").join(",") + ")";
