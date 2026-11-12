@@ -1,0 +1,20 @@
+# Build output
+build/
+build-*/
+
+# Databases and logs created when running locally
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.log
+
+# Qt Creator / IDE
+CMakeLists.txt.user*
+.vscode/
+.idea/
+*.autosave
+
+# macOS
+.DS_Store
+*.dmg
