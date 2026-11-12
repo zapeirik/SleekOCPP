@@ -2,6 +2,7 @@
 
 #include <QFont>
 #include <QFontDatabase>
+#include <QGuiApplication>
 #include <QFormLayout>
 #include <QHeaderView>
 #include <QJsonDocument>
@@ -93,7 +94,7 @@ ChargePointDetailWidget::ChargePointDetailWidget(CentralSystem *centralSystem, Q
     m_messageText = new QPlainTextEdit(this);
     m_messageText->setObjectName("messageText");
     m_messageText->setReadOnly(true);
-    m_messageText->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    { QFont mono = QFontDatabase::systemFont(QFontDatabase::FixedFont); mono.setPointSizeF(QGuiApplication::font().pointSizeF()); m_messageText->setFont(mono); }
     auto *split = new QSplitter(Qt::Vertical, this);
     split->addWidget(m_messages);
     split->addWidget(m_messageText);

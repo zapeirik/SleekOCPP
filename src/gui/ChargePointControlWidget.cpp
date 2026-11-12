@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QDoubleSpinBox>
 #include <QFontDatabase>
+#include <QGuiApplication>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -70,7 +71,7 @@ ChargePointControlWidget::ChargePointControlWidget(CentralSystem *centralSystem,
     m_resultDetails = new QPlainTextEdit;
     m_resultDetails->setReadOnly(true);
     m_resultDetails->setMaximumHeight(90);
-    m_resultDetails->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    { QFont mono = QFontDatabase::systemFont(QFontDatabase::FixedFont); mono.setPointSizeF(QGuiApplication::font().pointSizeF()); m_resultDetails->setFont(mono); }
     m_resultDetails->hide();
     outer->addWidget(m_result);
     outer->addWidget(m_resultDetails);
@@ -246,7 +247,7 @@ QWidget *ChargePointControlWidget::buildRawGroup()
     m_rawAction->setPlaceholderText("Action, e.g. GetLocalListVersion");
     m_rawPayload = new QPlainTextEdit("{}");
     m_rawPayload->setObjectName("rawPayload");
-    m_rawPayload->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    { QFont mono = QFontDatabase::systemFont(QFontDatabase::FixedFont); mono.setPointSizeF(QGuiApplication::font().pointSizeF()); m_rawPayload->setFont(mono); }
     m_rawPayload->setMaximumHeight(80);
     auto *send = new QPushButton("Send");
     form->addRow("Action", m_rawAction);
