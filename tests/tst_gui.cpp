@@ -141,6 +141,17 @@ private slots:
         QVERIFY(mine);
         QCOMPARE(mine->rowCount(), 2);
         QCOMPARE(mine->item(1, 7)->text(), QString("7000"));
+
+        db.saveMeterValues("CP-A", 1, a, QJsonArray{QJsonObject{{"timestamp", t.addSecs(-3000).toString(Qt::ISODate)},
+                                                              {"sampledValue", QJsonArray{QJsonObject{{"value", "2000"}}}}},
+                                                    QJsonObject{{"timestamp", t.addSecs(-2700).toString(Qt::ISODate)},
+                                                              {"sampledValue", QJsonArray{QJsonObject{{"value", "3000"}}}}}});
+        mine->selectRow(1);
+        auto *samples = perCharger->findChild<QTableWidget *>("meterValuesTable");
+        QVERIFY(samples);
+        QCOMPARE(samples->rowCount(), 2);
+        QCOMPARE(samples->item(1, 7)->text(), QString("0h 05m 00s"));
+        QVERIFY(perCharger->findChild<QLabel *>("transactionSummary")->text().contains("2 reported value(s)"));
         QVERIFY(mine->isColumnHidden(1));
     }
     void listShowsChargersAndEmitsSelection()

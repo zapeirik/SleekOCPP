@@ -44,7 +44,7 @@ The same settings can be put in `~/Library/Preferences/SleekOCPP/sleekocpp.ini` 
   The **Prune** menu cleans up the log in two steps: *Delete messages...* hides messages matching charger, message types, call types (Call/CallResult/CallError) and/or "older than" a date (with confirmation); *Remove deleted from database...* then erases the hidden ones for good, for this charger or all (with confirmation).
 - **Configuration tab:** read all keys (GetConfiguration), double-click a value to change it (ChangeConfiguration), set keys that are not listed.
 - **Control tab:** start charging (idTag typed per start), stop charging, SetChargingProfile (single-period limit), clear profiles, Reset, TriggerMessage and raw messages.
-- **Transactions tab (per charger):** whole transaction history of the selected charger, sortable. The top-level **Transactions** tab next to *Chargers* shows all chargers. Energy is meterStop − meterStart in Wh as reported.
+- **Transactions tab (per charger):** whole transaction history of the selected charger, sortable. The top-level **Transactions** tab next to *Chargers* shows all chargers. Energy is meterStop − meterStart in Wh as reported. Selecting a row shows its details under the grid: a summary and every meter value reported for it (periodic MeterValues and the `transactionData` of StopTransaction, marked in the Source column) with the interval since the previous sample of the same measurand, plus min/average/max interval.
 
 ## REST API
 
@@ -55,6 +55,7 @@ JSON over HTTP, no authentication. `<id>` is the charge point id.
 | `GET /api/charge_points` | All chargers with connectors |
 | `GET /api/charge_points/<id>` | One charger, including the last transaction |
 | `GET /api/transactions?limit=N` | Transaction history of all chargers, newest first (no limit = everything) |
+| `GET /api/transactions/<id>/meter_values` | The transaction and all its meter values, oldest first, with `source` and `intervalSeconds` (404 if unknown) |
 | `GET /api/charge_points/<id>/transactions?limit=N` | Transaction history of one charger (404 if unknown) |
 | `GET /api/charge_points/<id>/messages?limit=N` | Logged OCPP frames, newest first (soft-deleted ones excluded) |
 | `POST /api/messages/delete` | Step 1, no confirmation: body `{chargePointId?, actions?[], types?[], before?}` (ISO 8601); marks matching messages deleted, returns `{"deleted": n}` |

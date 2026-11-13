@@ -175,7 +175,7 @@ CentralSystem::Reply CentralSystem::handleStopTransaction(const QString &cpId, c
     const QJsonArray data = p["transactionData"].toArray();
     if (!data.isEmpty()) {
         const auto tx = m_db->transaction(txId);
-        m_db->saveMeterValues(cpId, tx ? tx->connectorId : 0, txId, data);
+        m_db->saveMeterValues(cpId, tx ? tx->connectorId : 0, txId, data, "StopTransaction");
     }
     return Reply::ok({{"idTagInfo", idTagInfo("Accepted")}});
 }

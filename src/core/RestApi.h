@@ -18,6 +18,7 @@ class QTcpServer;
  *   /api/charge_points/<id>                    details, connectors and last transaction
  *   /api/charge_points/<id>/messages?limit=N   message log, newest first
  *   /api/charge_points/<id>/meter_values?limit=N
+ *   /api/transactions/<txId>/meter_values      transaction + all its meter values with intervals
  *   /api/charge_points/<id>/configuration      cached configuration
  *
  * Message pruning (POST, no confirmation):

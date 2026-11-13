@@ -88,6 +88,10 @@ struct MeterValueRecord
     QString measurand;             ///< e.g. Energy.Active.Import.Register
     QString value;
     QString unit, context, phase, location;
+    QString source;                ///< "MeterValues", "StopTransaction" (transactionData) or "" (old rows)
+    /// Only set by transactionMeterValues(): seconds since the previous sample of the same
+    /// measurand/phase/location/source in the same transaction; empty for the first one.
+    std::optional<qint64> intervalSecs;
 };
 
 /// One cached configuration key of a charge point (from GetConfiguration / ChangeConfiguration).
@@ -143,9 +147,13 @@ public:
     bool stopTransaction(qint64 transactionId, qint64 meterStop, const QDateTime &timestamp,
                          const QString &reason);
     /// Stores the `meterValue` array of a MeterValues message (one row per sampled value)
-    /// and updates the charge point's last meter value time.
+    /// and updates the charge point's last meter value time. @p source tells where they came from
+    /// ("MeterValues" or "StopTransaction").
     void saveMeterValues(const QString &id, int connectorId, std::optional<qint64> transactionId,
-                         const QJsonArray &meterValue);
+                         const QJsonArray &meterValue, const QString &source = QStringLiteral("MeterValues"));
+    /// All meter values reported for one transaction (MeterValues and StopTransaction data),
+    /// oldest first, with intervalSecs filled in.
+    QList<MeterValueRecord> transactionMeterValues(qint64 transactionId) const;
 
     // ---- message log -------------------------------------------------------------------
     /// Appends a frame to the log. For results/errors with an empty @p action the action is

@@ -2,6 +2,7 @@
 
 #include <QHeaderView>
 #include <QLabel>
+#include <QSplitter>
 #include <QTableWidget>
 #include <QVBoxLayout>
 
@@ -75,7 +76,32 @@ TransactionsWidget::TransactionsWidget(CentralSystem *centralSystem, bool showCh
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->setSortingEnabled(true);
     m_table->sortByColumn(IdColumn, Qt::DescendingOrder);
-    layout->addWidget(m_table, 1);
+
+    // Details of the selected transaction: summary text and its meter values.
+    auto *details = new QWidget(this);
+    auto *detailsLayout = new QVBoxLayout(details);
+    detailsLayout->setContentsMargins(0, 0, 0, 0);
+    m_detailSummary = new QLabel(details);
+    m_detailSummary->setObjectName("transactionSummary");
+    m_detailSummary->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_detailSummary->setWordWrap(true);
+    m_samples = new QTableWidget(0, 8, details);
+    m_samples->setObjectName("meterValuesTable");
+    m_samples->setHorizontalHeaderLabels({"Time", "Source", "Measurand", "Phase", "Value", "Unit", "Context", "Interval"});
+    m_samples->verticalHeader()->hide();
+    m_samples->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_samples->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_samples->horizontalHeader()->setStretchLastSection(true);
+    detailsLayout->addWidget(m_detailSummary);
+    detailsLayout->addWidget(m_samples, 1);
+
+    auto *split = new QSplitter(Qt::Vertical, this);
+    split->addWidget(m_table);
+    split->addWidget(details);
+    split->setSizes({300, 220});
+    layout->addWidget(split, 1);
+    connect(m_table, &QTableWidget::itemSelectionChanged, this, &TransactionsWidget::showDetails);
+    showDetails();
 
     m_summary = new QLabel(this);
     layout->addWidget(m_summary);
@@ -105,6 +131,9 @@ void TransactionsWidget::scheduleRefresh(const QString &changedId)
 /// under the loop, then switched on again which re-applies the user's chosen sort order.
 void TransactionsWidget::refresh()
 {
+    const qint64 selectedId = m_table->currentRow() >= 0 && m_table->item(m_table->currentRow(), IdColumn)
+        ? m_table->item(m_table->currentRow(), IdColumn)->data(Qt::UserRole).toLongLong() : -1;
+    QSignalBlocker block(m_table);
     m_table->setSortingEnabled(false);
     m_table->setRowCount(0);
     QList<TransactionRecord> list;
@@ -134,10 +163,65 @@ void TransactionsWidget::refresh()
                                                  : (t.stopReason.isEmpty() ? QStringLiteral("Stopped") : "Stopped (" + t.stopReason + ")")));
     }
     m_table->setSortingEnabled(true);
+    for (int row = 0; selectedId >= 0 && row < m_table->rowCount(); ++row)
+        if (m_table->item(row, IdColumn)->data(Qt::UserRole).toLongLong() == selectedId)
+            m_table->selectRow(row);
+    block.unblock();
+    showDetails();
     for (int c = 0; c < ColumnCount - 1; ++c)
         m_table->resizeColumnToContents(c);
 
     m_summary->setText(list.isEmpty() ? QStringLiteral("No transactions.")
                                       : QString("%1 transactions (%2 running), %3 Wh delivered in finished ones")
                                             .arg(list.size()).arg(active).arg(totalWh));
+}
+
+/// Fills the details area for the selected transaction: summary and all its reported meter values.
+void TransactionsWidget::showDetails()
+{
+    m_samples->setRowCount(0);
+    const int row = m_table->currentRow();
+    if (row < 0 || !m_table->item(row, IdColumn)) {
+        m_detailSummary->setText("Select a transaction to see its meter values.");
+        return;
+    }
+    Database *db = m_cs->database();
+    const auto tx = db->transaction(m_table->item(row, IdColumn)->data(Qt::UserRole).toLongLong());
+    if (!tx)
+        return;
+    const auto samples = db->transactionMeterValues(tx->id);
+
+    qint64 minInterval = -1, maxInterval = -1, sumInterval = 0;
+    int intervals = 0;
+    for (const MeterValueRecord &v : samples) {
+        if (!v.intervalSecs || *v.intervalSecs <= 0)
+            continue;
+        minInterval = intervals == 0 ? *v.intervalSecs : qMin(minInterval, *v.intervalSecs);
+        maxInterval = qMax(maxInterval, *v.intervalSecs);
+        sumInterval += *v.intervalSecs;
+        ++intervals;
+    }
+
+    QString text = QString("Transaction #%1 on %2, connector %3, idTag %4\nMeter start %5 Wh, meter stop %6, stop reason %7\n")
+                       .arg(tx->id).arg(tx->chargePointId).arg(tx->connectorId).arg(tx->idTag).arg(tx->meterStart)
+                       .arg(tx->meterStop ? QString::number(*tx->meterStop) + " Wh" : QStringLiteral("-"),
+                            tx->stopReason.isEmpty() ? QStringLiteral("-") : tx->stopReason);
+    text += QString("%1 reported value(s)").arg(samples.size());
+    if (intervals > 0)
+        text += QString("; interval between samples: min %1 s, average %2 s, max %3 s")
+                    .arg(minInterval).arg(sumInterval / intervals).arg(maxInterval);
+    m_detailSummary->setText(text);
+
+    m_samples->setRowCount(samples.size());
+    for (int i = 0; i < samples.size(); ++i) {
+        const MeterValueRecord &v = samples.at(i);
+        const QStringList cells = {timeText(v.timestamp), v.source.isEmpty() ? QStringLiteral("-") : v.source,
+                                   v.measurand, v.phase.isEmpty() ? QStringLiteral("-") : v.phase, v.value,
+                                   v.unit, v.context,
+                                   v.intervalSecs ? durationText(*v.intervalSecs) : QStringLiteral("-")};
+        for (int c = 0; c < cells.size(); ++c)
+            m_samples->setItem(i, c, new QTableWidgetItem(cells.at(c)));
+    }
+    for (int c = 0; c < m_samples->columnCount() - 1; ++c)
+        m_samples->resizeColumnToContents(c);
 }

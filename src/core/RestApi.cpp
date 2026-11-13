@@ -51,7 +51,8 @@ QJsonObject toJson(const MeterValueRecord &v)
     return {{"timestamp", timeJson(v.timestamp)}, {"connectorId", v.connectorId},
             {"transactionId", v.transactionId ? QJsonValue(static_cast<double>(*v.transactionId)) : QJsonValue(QJsonValue::Null)},
             {"measurand", v.measurand}, {"value", v.value}, {"unit", v.unit},
-            {"context", v.context}, {"phase", v.phase}, {"location", v.location}};
+            {"context", v.context}, {"phase", v.phase}, {"location", v.location}, {"source", v.source},
+            {"intervalSeconds", v.intervalSecs ? QJsonValue(static_cast<double>(*v.intervalSecs)) : QJsonValue(QJsonValue::Null)}};
 }
 
 QJsonObject toJson(const ConfigKeyRecord &k)
@@ -260,6 +261,17 @@ void RestApi::addReadRoutes()
         for (const auto &t : db->transactions({}, limitParam(req, 0)))
             list.append(toJson(t));
         return jsonResponse({{"transactions", list}});
+    });
+
+    // Everything reported during one transaction, oldest first, with the interval between samples.
+    m_http.route("/api/transactions/<arg>/meter_values", QHttpServerRequest::Method::Get, [db](qint64 id) {
+        const auto tx = db->transaction(id);
+        if (!tx)
+            return errorResponse("Unknown transaction", StatusCode::NotFound);
+        QJsonArray list;
+        for (const auto &v : db->transactionMeterValues(id))
+            list.append(toJson(v));
+        return jsonResponse({{"transaction", toJson(*tx)}, {"meterValues", list}});
     });
 
     m_http.route("/api/charge_points/<arg>/transactions", QHttpServerRequest::Method::Get,

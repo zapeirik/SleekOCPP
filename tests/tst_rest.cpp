@@ -135,6 +135,29 @@ private slots:
         QCOMPARE(request("GET", "/api/charge_points/NOPE/transactions").status, 404);
     }
 
+    void transactionMeterValuesHaveIntervals()
+    {
+        const QDateTime t0 = QDateTime::fromString("2026-01-01T10:00:00Z", Qt::ISODate);
+        const qint64 tx = db.startTransaction("CP1", 1, "A", 0, t0);
+        auto mv = [&](int secs, const char *wh) {
+            return QJsonObject{{"timestamp", t0.addSecs(secs).toString(Qt::ISODate)},
+                               {"sampledValue", QJsonArray{QJsonObject{{"value", wh}}}}};
+        };
+        db.saveMeterValues("CP1", 1, tx, QJsonArray{mv(60, "10")});
+        db.saveMeterValues("CP1", 1, tx, QJsonArray{mv(0, "0"), mv(120, "20"), mv(300, "50")}, "StopTransaction");
+
+        const auto r = request("GET", QString("/api/transactions/%1/meter_values").arg(tx).toUtf8().constData());
+        QCOMPARE(r.status, 200);
+        const QJsonArray list = r.json["meterValues"].toArray();
+        QCOMPARE(list.size(), 4);
+        QCOMPARE(list[0].toObject()["source"].toString(), QString("StopTransaction"));
+        QVERIFY(list[0].toObject()["intervalSeconds"].isNull());
+        QCOMPARE(list[2].toObject()["intervalSeconds"].toInt(), 120); // StopTransaction samples: 0, 120, 300
+        QCOMPARE(list[3].toObject()["intervalSeconds"].toInt(), 180);
+        QVERIFY(list[1].toObject()["intervalSeconds"].isNull());       // first MeterValues sample
+        QCOMPARE(request("GET", "/api/transactions/9999/meter_values").status, 404);
+    }
+
     void messagePruningInTwoSteps()
     {
         db.logMessage("CP1", true, "Call", "Heartbeat", "1", "[]");

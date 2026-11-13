@@ -1,6 +1,7 @@
 #include "Database.h"
 
 #include <QDebug>
+#include <QHash>
 #include <QJsonObject>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -8,7 +9,7 @@
 
 namespace {
 
-constexpr int kSchemaVersion = 2;
+constexpr int kSchemaVersion = 3;
 
 QString now() { return Database::toDb(QDateTime::currentDateTimeUtc()); }
 
@@ -27,6 +28,25 @@ ChargePointRecord readChargePoint(const QSqlQuery &q)
     r.lastDisconnected = Database::fromDb(q.value("last_disconnected"));
     r.lastHeartbeat = Database::fromDb(q.value("last_heartbeat"));
     r.lastMeterValue = Database::fromDb(q.value("last_meter_value"));
+    return r;
+}
+
+MeterValueRecord readMeterValue(const QSqlQuery &q)
+{
+    MeterValueRecord r;
+    r.id = q.value("id").toLongLong();
+    r.chargePointId = q.value("charge_point_id").toString();
+    r.connectorId = q.value("connector_id").toInt();
+    if (!q.value("transaction_id").isNull())
+        r.transactionId = q.value("transaction_id").toLongLong();
+    r.timestamp = Database::fromDb(q.value("timestamp"));
+    r.measurand = q.value("measurand").toString();
+    r.value = q.value("value").toString();
+    r.unit = q.value("unit").toString();
+    r.context = q.value("context").toString();
+    r.phase = q.value("phase").toString();
+    r.location = q.value("location").toString();
+    r.source = q.value("source").toString();
     return r;
 }
 
@@ -139,6 +159,18 @@ bool Database::migrate()
         run(QString("PRAGMA user_version=%1").arg(kSchemaVersion));
         m_db.commit();
         version = 2;
+    }
+    if (version < 3) {
+        // Meter values remember whether they came from MeterValues or StopTransaction; index for per-transaction lookup.
+        m_db.transaction();
+        if (!run("ALTER TABLE meter_values ADD COLUMN source TEXT NOT NULL DEFAULT ''")
+            || !run("CREATE INDEX idx_meter_values_tx ON meter_values(transaction_id)")) {
+            m_db.rollback();
+            return false;
+        }
+        run(QString("PRAGMA user_version=%1").arg(kSchemaVersion));
+        m_db.commit();
+        version = 3;
     }
     return true;
 }
@@ -258,7 +290,7 @@ bool Database::stopTransaction(qint64 transactionId, qint64 meterStop, const QDa
 }
 
 void Database::saveMeterValues(const QString &id, int connectorId, std::optional<qint64> transactionId,
-                               const QJsonArray &meterValue)
+                               const QJsonArray &meterValue, const QString &source)
 {
     m_db.transaction();
     for (const QJsonValue &mv : meterValue) {
@@ -269,11 +301,11 @@ void Database::saveMeterValues(const QString &id, int connectorId, std::optional
             // OCPP default measurand when omitted is the active import energy register.
             const QString measurand = s["measurand"].toString("Energy.Active.Import.Register");
             run(R"(INSERT INTO meter_values (charge_point_id, connector_id, transaction_id, timestamp,
-                                             measurand, value, unit, context, phase, location)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?))",
+                                             measurand, value, unit, context, phase, location, source)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?))",
                 {id, connectorId, transactionId ? QVariant(*transactionId) : QVariant(QMetaType::fromType<qint64>()),
                  ts, measurand, s["value"].toString(), s["unit"].toString(),
-                 s["context"].toString(), s["phase"].toString(), s["location"].toString()});
+                 s["context"].toString(), s["phase"].toString(), s["location"].toString(), source});
         }
     }
     m_db.commit();
@@ -544,27 +576,31 @@ QList<MessageRecord> Database::recentMessages(const QString &id, int limit, cons
     return list;
 }
 
+QList<MeterValueRecord> Database::transactionMeterValues(qint64 transactionId) const
+{
+    QList<MeterValueRecord> list;
+    QSqlQuery q(m_db);
+    if (!run(q, "SELECT * FROM meter_values WHERE transaction_id=? ORDER BY timestamp, id", {transactionId}))
+        return list;
+    QHash<QString, QDateTime> previous; // last timestamp per measurand/phase/location/source
+    while (q.next()) {
+        MeterValueRecord r = readMeterValue(q);
+        const QString key = r.measurand + '|' + r.phase + '|' + r.location + '|' + r.source;
+        if (previous.contains(key) && r.timestamp.isValid() && previous[key].isValid())
+            r.intervalSecs = previous[key].secsTo(r.timestamp);
+        previous[key] = r.timestamp;
+        list.append(r);
+    }
+    return list;
+}
+
 QList<MeterValueRecord> Database::recentMeterValues(const QString &id, int limit) const
 {
     QList<MeterValueRecord> list;
     QSqlQuery q(m_db);
     if (run(q, "SELECT * FROM meter_values WHERE charge_point_id=? ORDER BY id DESC LIMIT ?", {id, limit})) {
-        while (q.next()) {
-            MeterValueRecord r;
-            r.id = q.value("id").toLongLong();
-            r.chargePointId = id;
-            r.connectorId = q.value("connector_id").toInt();
-            if (!q.value("transaction_id").isNull())
-                r.transactionId = q.value("transaction_id").toLongLong();
-            r.timestamp = fromDb(q.value("timestamp"));
-            r.measurand = q.value("measurand").toString();
-            r.value = q.value("value").toString();
-            r.unit = q.value("unit").toString();
-            r.context = q.value("context").toString();
-            r.phase = q.value("phase").toString();
-            r.location = q.value("location").toString();
-            list.append(r);
-        }
+        while (q.next())
+            list.append(readMeterValue(q));
     }
     return list;
 }
