@@ -15,6 +15,7 @@
 
 #ifdef SLEEKOCPP_HAS_GUI
 #include <QApplication>
+#include <QIcon>
 #include "gui/MainWindow.h"
 #endif
 
@@ -36,8 +37,10 @@ int main(int argc, char *argv[])
 
     std::unique_ptr<QCoreApplication> app;
 #ifdef SLEEKOCPP_HAS_GUI
-    if (!headless)
+    if (!headless) {
         app = std::make_unique<QApplication>(argc, argv);
+        QApplication::setWindowIcon(QIcon(":/icons/icon_512x512.png"));
+    }
 #endif
     if (!app)
         app = std::make_unique<QCoreApplication>(argc, argv);

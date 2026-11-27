@@ -21,6 +21,33 @@ Needs Qt 6.5 or newer (developed with 6.11) including Qt WebSockets, Qt HTTP Ser
 
 If a port is already in use, the GUI stays open and shows a red banner; headless exits with code 1.
 
+### Examples
+
+From the project folder (use the full path to the binary from elsewhere):
+
+    # GUI on custom ports (OCPP 9100, REST 8100)
+    ./build/src/sleekocpp -p 9100 --rest-port 8100
+
+    # Headless, separate database file, debug log written to a file
+    ./build/src/sleekocpp --headless -p 9100 --db ~/ocpp-test.db --log-level debug --log-file ~/ocpp.log
+
+    # REST API reachable from other machines (no authentication!)
+    ./build/src/sleekocpp --rest-bind 0.0.0.0
+
+    # Default idTag for remote start
+    ./build/src/sleekocpp --id-tag MYTAG
+
+The installed app (`/Applications/SleekOCPP.app`, see "macOS app bundle") takes the same options:
+
+    open -n /Applications/SleekOCPP.app --args -p 9100 --rest-port 8100
+    /Applications/SleekOCPP.app/Contents/MacOS/SleekOCPP --headless -p 9100   # runs in the terminal
+
+Point a charger at `ws://<this computer>:9100/<charge point id>`. Quick REST check:
+
+    curl localhost:8100/api/charge_points
+
+`./build/src/sleekocpp --help` lists all options. Without options the ini file or the defaults are used.
+
 ### Options
 
 | Option | Default | Meaning |
@@ -96,10 +123,15 @@ The REST API listens on all interfaces inside the container; publish port 8080 o
 
 ## macOS app bundle
 
-    packaging/macos.sh
+    packaging/macos.sh            # build only
+    packaging/macos.sh --install  # also copy to /Applications
 
 Builds `build-macos/src/SleekOCPP.app` and `SleekOCPP.dmg` with Qt copied in (`macdeployqt`). It is signed ad hoc,
 which is enough on the Mac that built it; giving it to others needs a Developer ID signature and notarization.
+The app has its own icon (`assets/SleekOcpp.icns`, made from `assets/SleekOcpp.iconset` with `iconutil -c icns`) and
+starts from Finder/Dock/Spotlight like any Mac app in GUI mode; pass options with `open -n SleekOCPP.app --args -p 9100`.
+macOS asks once to allow incoming network connections, which chargers need. The icon is also set as window icon when
+running the plain binary.
 
 ## Code layout and how to extend it
 

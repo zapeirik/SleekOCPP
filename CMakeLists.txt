@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
+# Oldest macOS the .app runs on (written to Info.plist). Must be set before project().
+set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version")
 project(SleekOCPP VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)

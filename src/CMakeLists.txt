@@ -28,12 +28,26 @@ target_link_libraries(sleekocpp_core PUBLIC Qt6::Core Qt6::Network Qt6::WebSocke
 add_executable(sleekocpp main.cpp)
 target_link_libraries(sleekocpp PRIVATE sleekocpp_core)
 
+# Application icon, compiled into the executable (window / Dock icon outside a .app bundle too).
+set(ICON_DIR ${CMAKE_SOURCE_DIR}/assets/SleekOcpp.iconset)
+qt_add_resources(sleekocpp icons PREFIX /icons
+    BASE ${ICON_DIR}
+    FILES ${ICON_DIR}/icon_16x16.png ${ICON_DIR}/icon_32x32.png ${ICON_DIR}/icon_128x128.png
+          ${ICON_DIR}/icon_256x256.png ${ICON_DIR}/icon_512x512.png)
+
 # Build SleekOCPP.app instead of a plain binary (used by packaging/macos.sh, then macdeployqt).
 option(SLEEKOCPP_MACOS_BUNDLE "Build a macOS .app bundle" OFF)
 if(APPLE AND SLEEKOCPP_MACOS_BUNDLE)
+    # The .icns is built from the iconset with `iconutil -c icns` and committed (assets/).
+    set(APP_ICNS ${CMAKE_SOURCE_DIR}/assets/SleekOcpp.icns)
+    set_source_files_properties(${APP_ICNS} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    target_sources(sleekocpp PRIVATE ${APP_ICNS})
     set_target_properties(sleekocpp PROPERTIES
         OUTPUT_NAME SleekOCPP
         MACOSX_BUNDLE ON
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/packaging/Info.plist.in
+        MACOSX_BUNDLE_ICON_FILE SleekOcpp.icns
+        MACOSX_BUNDLE_COPYRIGHT "Copyright © Zaptec"
         MACOSX_BUNDLE_BUNDLE_NAME SleekOCPP
         MACOSX_BUNDLE_GUI_IDENTIFIER com.zaptec.sleekocpp
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
